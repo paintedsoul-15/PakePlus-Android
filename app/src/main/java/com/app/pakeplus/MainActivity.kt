@@ -59,7 +59,8 @@ class MainActivity : AppCompatActivity() {
         val fullScreen = config?.get("fullScreen") as? Boolean ?: false
         val debug = config?.get("debug") as? Boolean ?: false
         val userAgent = config?.get("userAgent") as? String ?: ""
-        val webUrl = config?.get("webUrl") as? String ?: "https://pakeplus.cn/"
+        // 强制指定为筝筝的网址
+        val webUrl = "https://xmas.chaz.fun/?id=cQ3w6ttvVhsEIKZc&m=view"
         // enable debug by chrome://inspect
         WebView.setWebContentsDebuggingEnabled(debug)
         // config fullscreen
