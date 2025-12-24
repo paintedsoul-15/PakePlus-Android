@@ -13,41 +13,22 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.webkit.PermissionRequest // 必须保留这个
 import android.webkit.WebChromeClient
-import android.webkit.PermissionRequest
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.enableEdgeToEdge
-// import android.view.Menu
-// import android.view.WindowInsets
-// import com.google.android.material.snackbar.Snackbar
-// import com.google.android.material.navigation.NavigationView
-// import androidx.navigation.findNavController
-// import androidx.navigation.ui.AppBarConfiguration
-// import androidx.navigation.ui.navigateUp
-// import androidx.navigation.ui.setupActionBarWithNavController
-// import androidx.navigation.ui.setupWithNavController
-// import androidx.drawerlayout.widget.DrawerLayout
-// import com.app.pakeplus.databinding.ActivityMainBinding
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GestureDetectorCompat
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.net.toUri
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStreamReader
-import java.net.URISyntaxException
 import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
-
-//    private lateinit var appBarConfiguration: AppBarConfiguration
-//    private lateinit var binding: ActivityMainBinding
 
     private lateinit var webView: WebView
     private lateinit var gestureDetector: GestureDetectorCompat
@@ -55,16 +36,31 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // parseJsonWithNative
+
+        // 1. 先初始化布局配置 (防止闪退)
+        enableEdgeToEdge()
+        setContentView(R.layout.single_main)
+
+        // 设置安全区域
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.ConstraintLayout)) { view, insets ->
+            val systemBar = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(systemBar.left, systemBar.top, systemBar.right, 0)
+            insets
+        }
+
+        // 2. 读取配置
         val config = parseJsonWithNative(this, "app.json")
         val fullScreen = config?.get("fullScreen") as? Boolean ?: false
         val debug = config?.get("debug") as? Boolean ?: false
         val userAgent = config?.get("userAgent") as? String ?: ""
-        // 强制指定为筝筝的网址
+        
+        // 强制指定网址
         val webUrl = "https://xmas.chaz.fun/?id=cQ3w6ttvVhsEIKZc&m=view"
-        // enable debug by chrome://inspect
+
+        // 开启 WebView 调试
         WebView.setWebContentsDebuggingEnabled(debug)
-        // config fullscreen
+
+        // 3. 全屏设置
         if (fullScreen) {
             window.setFlags(
                 WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -91,64 +87,38 @@ class MainActivity : AppCompatActivity() {
                         )
             }
         }
-        // 1. 获取 WebView 组件 (如果你的布局里 ID 不是 webview，请改为对应的 ID)
-        val myWeb = findViewById<WebView>(R.id.webview)
 
-        // 2. 开启必要的 JS 设置
-        myWeb.settings.javaScriptEnabled = true
-        myWeb.settings.domStorageEnabled = true
-        myWeb.settings.mediaPlaybackRequiresUserGesture = false // 允许自动播放
-        myWeb.settings.allowFileAccess = true
+        // 4. 初始化 WebView (合并了之前的重复逻辑)
+        webView = findViewById(R.id.webview)
 
-        // 3. 【核心】重写 WebChromeClient，拦截并同意摄像头请求
-        myWeb.webChromeClient = object : WebChromeClient() {
-            override fun onPermissionRequest(request: PermissionRequest) {
-                // 直接同意网页的 摄像头/麦克风 请求
-                request.grant(request.resources)
-            }
-        }
-
-        // 4. 加载你在上面定义的那个 webUrl
-        myWeb.loadUrl(webUrl)
-        // 可以让内容视图的颜色延伸到屏幕边缘
-        enableEdgeToEdge()
-        setContentView(R.layout.single_main)
-        // set system safe area
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.ConstraintLayout))
-        { view, insets ->
-            val systemBar = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(systemBar.left, systemBar.top, systemBar.right, 0)
-            insets
-        }
-        webView = findViewById<WebView>(R.id.webview)
+        // 5. 配置 Settings
         webView.settings.apply {
-            javaScriptEnabled = true       // 启用JS
-            domStorageEnabled = true       // 启用DOM存储（Vue 需要）
-            allowFileAccess = true         // 允许文件访问
+            javaScriptEnabled = true        // 启用JS
+            domStorageEnabled = true        // 启用DOM存储
+            allowFileAccess = true          // 允许文件访问
             useWideViewPort = true
             loadWithOverviewMode = true
-            mediaPlaybackRequiresUserGesture = false
+            mediaPlaybackRequiresUserGesture = false // 允许自动播放
             setSupportMultipleWindows(true)
+            
+            // 设置 UA
+            if (userAgent.isNotEmpty()) {
+                userAgentString = userAgent
+            }
+            setSupportZoom(false)
         }
-        webView
-        // set user agent
-        if (userAgent.isNotEmpty()) {
-            webView.settings.userAgentString = userAgent
-        }
-
-        webView.settings.loadWithOverviewMode = true
-        webView.settings.setSupportZoom(false)
-
-        // clear cache
+        
         webView.clearCache(true)
 
-        // inject js
+        // 6. 配置 Client
+        // 处理网页跳转、Intent 拦截
         webView.webViewClient = MyWebViewClient(debug)
-
-        // get web load progress
+        
+        // 处理进度条、以及最重要的【摄像头权限】
+        // 注意：这里使用的是底部的 MyChromeClient 类，我已经帮你修改了那个类
         webView.webChromeClient = MyChromeClient()
 
-        // Setup gesture detector
+        // 7. 手势设置 (Swipe Back)
         gestureDetector =
             GestureDetectorCompat(this, object : GestureDetector.SimpleOnGestureListener() {
                 override fun onFling(
@@ -158,21 +128,16 @@ class MainActivity : AppCompatActivity() {
                     velocityY: Float
                 ): Boolean {
                     if (e1 == null) return false
-
                     val diffX = e2.x - e1.x
                     val diffY = e2.y - e1.y
-
-                    // Only handle horizontal swipes
                     if (abs(diffX) > abs(diffY)) {
                         if (abs(diffX) > 100 && abs(velocityX) > 100) {
                             if (diffX > 0) {
-                                // Swipe right - go back
                                 if (webView.canGoBack()) {
                                     webView.goBack()
                                     return true
                                 }
                             } else {
-                                // Swipe left - go forward
                                 if (webView.canGoForward()) {
                                     webView.goForward()
                                     return true
@@ -184,39 +149,13 @@ class MainActivity : AppCompatActivity() {
                 }
             })
 
-        // Set touch listener for WebView
         webView.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             false
         }
 
-        // load webUrl or file:///android_asset/index.html
+        // 8. 最后一步：加载网页 (确保所有监听器都就绪)
         webView.loadUrl(webUrl)
-
-//        binding = ActivityMainBinding.inflate(layoutInflater)
-//        setContentView(R.layout.single_main)
-
-//        setSupportActionBar(binding.appBarMain.toolbar)
-
-//        binding.appBarMain.fab.setOnClickListener { view ->
-//            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-//                .setAction("Action", null)
-//                .setAnchorView(R.id.fab).show()
-//        }
-
-//        val drawerLayout: DrawerLayout = binding.drawerLayout
-//        val navView: NavigationView = binding.navView
-//        val navController = findNavController(R.id.nav_host_fragment_content_main)
-
-        // Passing each menu ID as a set of Ids because each
-        // menu should be considered as top level destinations.
-//        appBarConfiguration = AppBarConfiguration(
-//            setOf(
-//                R.id.nav_home, R.id.nav_gallery, R.id.nav_slideshow
-//            ), drawerLayout
-//        )
-//        setupActionBarWithNavController(navController, appBarConfiguration)
-//        navView.setupWithNavController(navController)
     }
 
 
@@ -230,22 +169,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun parseJsonWithNative(context: Context, jsonFilePath: String): Map<String, Any>? {
-        val jsonString = assets.open(jsonFilePath).bufferedReader().use { it.readText() }
         return try {
+            val jsonString = assets.open(jsonFilePath).bufferedReader().use { it.readText() }
             val jsonObject = JSONObject(jsonString)
-            // 提取字段
-            val name = jsonObject.getString("name")
-            val webUrl = jsonObject.getString("webUrl")
-            val debug = jsonObject.getBoolean("debug")
-            val userAgent = jsonObject.getString("userAgent")
-            val fullScreen = jsonObject.getBoolean("fullScreen")
-            // 返回键值对
             mapOf(
-                "name" to name,
-                "webUrl" to webUrl,
-                "debug" to debug,
-                "userAgent" to userAgent,
-                "fullScreen" to fullScreen
+                "name" to jsonObject.getString("name"),
+                "webUrl" to jsonObject.getString("webUrl"),
+                "debug" to jsonObject.getBoolean("debug"),
+                "userAgent" to jsonObject.getString("userAgent"),
+                "fullScreen" to jsonObject.getBoolean("fullScreen")
             )
         } catch (e: Exception) {
             e.printStackTrace()
@@ -253,126 +185,85 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-//    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-//        // Inflate the menu; this adds items to the action bar if it is present.
-//        menuInflater.inflate(R.menu.main, menu)
-//        return true
-//    }
-
-//    override fun onSupportNavigateUp(): Boolean {
-//        val navController = findNavController(R.id.nav_host_fragment_content_main)
-//        return navController.navigateUp(appBarConfiguration) || super.onSupportNavigateUp()
-//    }
-
+    // =========================================================
+    // 内部类：处理页面加载逻辑
+    // =========================================================
     inner class MyWebViewClient(val debug: Boolean) : WebViewClient() {
 
         @Deprecated("Deprecated in Java", ReplaceWith("false"))
         override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-            val url = url.toString()
+            val urlStr = url.toString()
 
-            // 检查链接是否是 HTTP/HTTPS，如果是，则继续在 WebView 中加载
-            if (url.startsWith("http://") || url.startsWith("https://")) {
-                return false // 返回 false，让 WebView 自己加载 URL
+            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
+                return false
             }
 
-            // --- 核心逻辑：处理外部应用链接 ---
-
-            // 1. 检查是否是 Intent URI (e.g., intent://...)
-            if (url.startsWith("intent://")) {
+            // 处理 Intent
+            if (urlStr.startsWith("intent://")) {
                 try {
-                    // 解析 Intent URI
-                    val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-
-                    // 检查设备上是否有应用可以处理此 Intent
+                    val intent = Intent.parseUri(urlStr, Intent.URI_INTENT_SCHEME)
                     if (intent.resolveActivity(view?.context?.packageManager!!) != null) {
                         view.context?.startActivity(intent)
-                        return true // 已经处理，阻止 WebView 加载
+                        return true
                     }
-
-                    // 如果找不到能处理的应用，可以尝试打开备用 URL (如果 Intent 中有定义 fallback URL)
                     val fallbackUrl = intent.getStringExtra("browser_fallback_url")
                     if (!fallbackUrl.isNullOrEmpty()) {
                         view.loadUrl(fallbackUrl)
-                        return true // 加载备用 URL
+                        return true
                     }
-
-                } catch (e: URISyntaxException) {
-                    // 解析 Intent URI 失败
-                    Log.e("WebViewClient", "Bad Intent URI: $url", e)
-                } catch (e: ActivityNotFoundException) {
-                    // 找不到匹配的 Activity (外部应用未安装)，此情况通常在 `resolveActivity` 后捕获
-                    Log.e("WebViewClient", "No activity found to handle Intent: $url", e)
-                    // 您也可以在这里加载一个 "未安装应用" 的提示页面
+                } catch (e: Exception) {
+                    Log.e("WebViewClient", "Bad Intent URI", e)
                 }
-                // 如果是 Intent 但无法处理（例如未安装应用），您可以选择返回 false 让 WebView 尝试加载（通常会失败）
-                // 或者继续执行下面的 Scheme 检查
             }
 
-            // 2. 检查是否是其他自定义 Scheme (e.g., weixin://, zhihu://)
-            // 注意：Intent URI 是更通用和推荐的方式，但有些应用可能直接使用 Scheme。
+            // 处理其他 Scheme
             try {
-                val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                // 必须检查是否有应用可以处理此 Intent，否则会导致崩溃
+                val intent = Intent(Intent.ACTION_VIEW, urlStr.toUri())
                 if (intent.resolveActivity(view?.context?.packageManager!!) != null) {
                     view.context?.startActivity(intent)
-                    return true // 已经处理，阻止 WebView 加载
-                } else {
-                    // 没有安装相应的应用
-                    Log.w("WebViewClient", "External app not installed for: $url")
-                    // 可以添加逻辑提示用户下载应用或打开相应的应用商店链接
+                    return true
                 }
             } catch (e: Exception) {
-                Log.e("WebViewClient", "Error starting external app: $url", e)
+                Log.e("WebViewClient", "Error starting external app", e)
             }
-            // 如果不是外部应用 Scheme，也不是 HTTP/HTTPS，则返回 false，让 WebView 处理
             return false
-        }
-
-        override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-            super.doUpdateVisitedHistory(view, url, isReload)
-        }
-
-
-        override fun onReceivedError(
-            view: WebView?,
-            request: WebResourceRequest?,
-            error: WebResourceError?
-        ) {
-            super.onReceivedError(view, request, error)
-            println("webView onReceivedError: ${error?.description}")
-        }
-
-        override fun onPageFinished(view: WebView?, url: String?) {
-            super.onPageFinished(view, url)
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
-            if (debug) {
-                // vConsole
-                val vConsole = assets.open("vConsole.js").bufferedReader().use { it.readText() }
-                val openDebug = """var vConsole = new window.VConsole()"""
-                view?.evaluateJavascript(vConsole + openDebug, null)
+            // 注入 JS (需确保 assets 里有 custom.js 和 vConsole.js，否则可能会抛错，这里加了 try catch 保护)
+            try {
+                if (debug) {
+                    val vConsole = assets.open("vConsole.js").bufferedReader().use { it.readText() }
+                    val openDebug = """var vConsole = new window.VConsole()"""
+                    view?.evaluateJavascript(vConsole + openDebug, null)
+                }
+                val injectJs = assets.open("custom.js").bufferedReader().use { it.readText() }
+                view?.evaluateJavascript(injectJs, null)
+            } catch (e: Exception) {
+                // 文件不存在时不崩溃
             }
-            // inject js
-            val injectJs = assets.open("custom.js").bufferedReader().use { it.readText() }
-            view?.evaluateJavascript(injectJs, null)
+        }
+        
+        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+             super.onReceivedError(view, request, error)
         }
     }
 
+    // =========================================================
+    // 内部类：处理 Chrome Client (进度条、权限)
+    // =========================================================
     inner class MyChromeClient : WebChromeClient() {
+        
+        // 👇👇👇 这里的修改最关键！加上了权限处理 👇👇👇
+        override fun onPermissionRequest(request: PermissionRequest) {
+            // 收到网页的摄像头/麦克风请求时，直接批准
+            request.grant(request.resources)
+        }
+        // 👆👆👆 修改结束 👆👆👆
+
         override fun onProgressChanged(view: WebView?, newProgress: Int) {
             super.onProgressChanged(view, newProgress)
-            val url = view?.url
-            println("wev view url:$url")
-        }
-
-        override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-            super.onShowCustomView(view, callback)
-        }
-
-        override fun onHideCustomView() {
-            super.onHideCustomView()
         }
     }
 }
