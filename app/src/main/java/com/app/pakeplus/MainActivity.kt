@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.webkit.PermissionRequest
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -90,6 +91,25 @@ class MainActivity : AppCompatActivity() {
                         )
             }
         }
+        // 1. 获取 WebView 组件 (如果你的布局里 ID 不是 webview，请改为对应的 ID)
+        val myWeb = findViewById<WebView>(R.id.webview)
+
+        // 2. 开启必要的 JS 设置
+        myWeb.settings.javaScriptEnabled = true
+        myWeb.settings.domStorageEnabled = true
+        myWeb.settings.mediaPlaybackRequiresUserGesture = false // 允许自动播放
+        myWeb.settings.allowFileAccess = true
+
+        // 3. 【核心】重写 WebChromeClient，拦截并同意摄像头请求
+        myWeb.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) {
+                // 直接同意网页的 摄像头/麦克风 请求
+                request.grant(request.resources)
+            }
+        }
+
+        // 4. 加载你在上面定义的那个 webUrl
+        myWeb.loadUrl(webUrl)
         // 可以让内容视图的颜色延伸到屏幕边缘
         enableEdgeToEdge()
         setContentView(R.layout.single_main)
